@@ -1,0 +1,67 @@
+name: Build luci-app-smbuser IPK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - openwrt_version: 21.02.7
+            sdk: openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+            sdk_dir: openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64
+          - openwrt_version: 23.05.6
+            sdk: openwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk_dir: openwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache fastjar file gawk gettext git \
+            libncurses5-dev libncursesw5-dev libssl-dev python3 python3-distutils \
+            python3-setuptools python-is-python3 rsync unzip wget xz-utils zlib1g-dev
+
+      - name: Download OpenWrt SDK
+        run: |
+          wget -q https://downloads.openwrt.org/releases/${{ matrix.openwrt_version }}/targets/x86/64/${{ matrix.sdk }}
+          tar -xf ${{ matrix.sdk }}
+
+      - name: Prepare feeds
+        working-directory: ${{ matrix.sdk_dir }}
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          make defconfig
+
+      - name: Build package
+        run: |
+          SRC="$GITHUB_WORKSPACE/src"
+          DST="$GITHUB_WORKSPACE/${{ matrix.sdk_dir }}/package/luci-app-smbuser"
+          mkdir -p "$DST"
+          cp -a "$SRC/Makefile" "$SRC/luasrc" "$SRC/po" "$SRC/root" "$DST/"
+          cd "$GITHUB_WORKSPACE/${{ matrix.sdk_dir }}"
+          make package/luci-app-smbuser/compile -j$(nproc) V=s
+
+      - name: Collect IPK
+        run: |
+          mkdir -p artifacts
+          find "$GITHUB_WORKSPACE/${{ matrix.sdk_dir }}/bin" -name 'luci-app-smbuser*.ipk' -exec cp {} artifacts/ \;
+          cd artifacts
+          sha256sum *.ipk > SHA256SUMS
+          ls -lh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-smbuser-openwrt-${{ matrix.openwrt_version }}
+          path: artifacts/*
+          if-no-files-found: error
