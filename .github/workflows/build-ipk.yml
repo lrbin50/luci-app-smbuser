@@ -11,11 +11,13 @@ jobs:
       matrix:
         include:
           - openwrt_version: 21.02.7
-            sdk: openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
-            sdk_dir: openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64
+            target: armvirt/64
+            sdk: openwrt-sdk-21.02.7-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+            sdk_dir: openwrt-sdk-21.02.7-armvirt-64_gcc-8.4.0_musl.Linux-x86_64
           - openwrt_version: 23.05.6
-            sdk: openwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-            sdk_dir: openwrt-sdk-23.05.6-x86-64_gcc-12.3.0_musl.Linux-x86_64
+            target: armsr/armv8
+            sdk: openwrt-sdk-23.05.6-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk_dir: openwrt-sdk-23.05.6-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64
 
     steps:
       - name: Checkout source
@@ -32,7 +34,7 @@ jobs:
 
       - name: Download OpenWrt SDK
         run: |
-          wget -q https://downloads.openwrt.org/releases/${{ matrix.openwrt_version }}/targets/x86/64/${{ matrix.sdk }}
+          wget -q https://downloads.openwrt.org/releases/${{ matrix.openwrt_version }}/targets/${{ matrix.target }}/${{ matrix.sdk }}
           tar -xf ${{ matrix.sdk }}
 
       - name: Prepare feeds
@@ -54,7 +56,9 @@ jobs:
       - name: Collect IPK
         run: |
           mkdir -p artifacts
-          find "$GITHUB_WORKSPACE/${{ matrix.sdk_dir }}/bin" -name 'luci-app-smbuser*.ipk' -exec cp {} artifacts/ \;
+          ipk=$(find "$GITHUB_WORKSPACE/${{ matrix.sdk_dir }}/bin" -name 'luci-app-smbuser*.ipk' | head -n 1)
+          test -n "$ipk" || { echo "IPK not found"; exit 1; }
+          cp "$ipk" "artifacts/luci-app-smbuser_1.0-1_openwrt-${{ matrix.openwrt_version }}_all.ipk"
           cd artifacts
           sha256sum *.ipk > SHA256SUMS
           ls -lh
